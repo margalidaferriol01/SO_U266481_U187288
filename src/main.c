@@ -8,6 +8,50 @@
 #include "circularBuffer.h"
 
 #define MAX_LINE 256
+#define BUFFER_SIZE 1024
+
+static CircularBuffer cbuf;                 // buffer circular on acumulem les dades
+static unsigned char linear[BUFFER_SIZE];   // buffer lineal auxiliar per al read()
+static int reached_eof = 0;                 // 1 quan read() ja no retorna més dades
+
+int read_line(char *out, int max) {
+    while (1) {
+        // 1. Mirem si al buffer ja hi ha una línia completa
+        int n = buffer_size_next_element(&cbuf, '\n', reached_eof);
+
+        // Cas límit: buffer ple i cap '\n' -> la traiem igualment
+        if (n == -1 && buffer_free_bytes(&cbuf) == 0)
+            n = buffer_used_bytes(&cbuf);
+
+        if (n > 0) {
+            // 2. Hi ha una línia: la traiem byte a byte amb pop
+            int j = 0;
+            for (int i = 0; i < n; i++) {
+                unsigned char c = buffer_pop(&cbuf);
+                if (j < max - 1)
+                    out[j++] = (char)c;
+            }
+            out[j] = '\0';
+            out[strcspn(out, "\r\n")] = '\0';   // traiem el salt de línia
+            return (int)strlen(out);
+        }
+
+        // 3. No hi ha línia i ja som a EOF -> s'ha acabat
+        if (reached_eof)
+            return -1;
+
+        // 4. Llegim un bloc nou al buffer lineal
+        int free_bytes = buffer_free_bytes(&cbuf);
+        ssize_t r = read(STDIN_FILENO, linear, free_bytes);
+        if (r <= 0) {
+            reached_eof = 1;
+        } else {
+            // 5. Passem les dades al buffer circular
+            for (ssize_t i = 0; i < r; i++)
+                buffer_push(&cbuf, linear[i]);
+        }
+    }
+}
 
 void executar_single(char *cmd_line) {
     char **args = split_command(cmd_line);
@@ -122,34 +166,33 @@ int main(void) {
     char cmd1[MAX_LINE];
     char cmd2[MAX_LINE];
 
+    if (buffer_init(&cbuf, BUFFER_SIZE) != 0) {
+        perror("Error inicialitzant el buffer");
+        return EXIT_FAILURE;
+    }
+
     while (1) {
-        if (fgets(mode, sizeof(mode), stdin) == NULL) {
+        if (read_line(mode, sizeof(mode)) < 0) {
             break;
         }
-        mode[strcspn(mode, "\r\n")] = 0;
 
         if (strcmp(mode, "EXIT") == 0) {
             break;
         }
 
         if (strcmp(mode, "SINGLE") == 0) {
-            if (fgets(cmd1, sizeof(cmd1), stdin) != NULL) {
-                cmd1[strcspn(cmd1, "\r\n")] = 0;
+            if (read_line(cmd1, sizeof(cmd1)) >= 0) {
                 executar_single(cmd1);
             }
         } 
         else if (strcmp(mode, "CONCURRENT") == 0) {
-            if (fgets(cmd1, sizeof(cmd1), stdin) != NULL) {
-                cmd1[strcspn(cmd1, "\r\n")] = 0;
+            if (read_line(cmd1, sizeof(cmd1)) >= 0) {
                 executar_concurrent(cmd1);
             }
         } 
         else if (strcmp(mode, "PIPED") == 0) {
-            if (fgets(cmd1, sizeof(cmd1), stdin) != NULL) {
-                cmd1[strcspn(cmd1, "\r\n")] = 0;
-                
-                if (fgets(cmd2, sizeof(cmd2), stdin) != NULL) {
-                    cmd2[strcspn(cmd2, "\r\n")] = 0;
+            if (read_line(cmd1, sizeof(cmd1)) >= 0) {
+                if (read_line(cmd2, sizeof(cmd2)) >= 0) {
                     executar_piped(cmd1, cmd2);
                 }
             }
