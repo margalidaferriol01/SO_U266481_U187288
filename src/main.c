@@ -45,7 +45,8 @@ int read_line(char *out, int max) {
         ssize_t r = read(STDIN_FILENO, linear, free_bytes);
         if (r <= 0) {
             reached_eof = 1;
-        } else {
+        } 
+        else {
             // 5. Passem les dades al buffer circular
             for (ssize_t i = 0; i < r; i++)
                 buffer_push(&cbuf, linear[i]);
