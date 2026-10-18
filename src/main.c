@@ -199,5 +199,6 @@ int main(void) {
         }
     }
 
+    buffer_deallocate(&cbuf);
     return 0;
 }
