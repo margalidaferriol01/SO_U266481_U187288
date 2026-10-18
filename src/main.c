@@ -10,46 +10,56 @@
 #define MAX_LINE 256
 #define BUFFER_SIZE 1024
 
-static CircularBuffer cbuf;                 // buffer circular on acumulem les dades
-static unsigned char linear[BUFFER_SIZE];   // buffer lineal auxiliar per al read()
-static int reached_eof = 0;                 // 1 quan read() ja no retorna més dades
+static CircularBuffer cbuf;                 
+static unsigned char linear[BUFFER_SIZE];  
+static int fi = 0;                 
 
-int read_line(char *out, int max) {
+int extreure_linia(char *out, int max) {
+
     while (1) {
-        // 1. Mirem si al buffer ja hi ha una línia completa
-        int n = buffer_size_next_element(&cbuf, '\n', reached_eof);
+        // Mira si hi ha una línia completa al buffer.
+        // Si hi ha línia completa retorna la mida.
+        // Si no hi ha cap línia completa retorna -1.
+        int mida = buffer_size_next_element(&cbuf, '\n', fi);
 
-        // Cas límit: buffer ple i cap '\n' -> la traiem igualment
-        if (n == -1 && buffer_free_bytes(&cbuf) == 0)
-            n = buffer_used_bytes(&cbuf);
+        // Cas 1: No hi ha cap \n i el buffer és ple.
+        // En aquest cas, agafa tot el que hi ha.
+        if (mida == -1 && buffer_free_bytes(&cbuf) == 0)
+            mida = buffer_used_bytes(&cbuf);
 
-        if (n > 0) {
-            // 2. Hi ha una línia: la traiem byte a byte amb pop
+        // Cas 2: Hi ha una línia completa per treure del buffer. 
+        if (mida > 0) {
+            // Traiem la línia del buffer byte a byte i la copiem a out.
             int j = 0;
-            for (int i = 0; i < n; i++) {
+            for (int i = 0; i < mida; i++) {
                 unsigned char c = buffer_pop(&cbuf);
+                // Només ho copiem a out si hi ha espai.
                 if (j < max - 1)
                     out[j++] = (char)c;
             }
             out[j] = '\0';
-            out[strcspn(out, "\r\n")] = '\0';   // traiem el salt de línia
+            out[strcspn(out, "\r\n")] = '\0';
             return (int)strlen(out);
         }
 
-        // 3. No hi ha línia i ja som a EOF -> s'ha acabat
-        if (reached_eof)
+        // Cas 3: No hi ha línia al buffer i hem arribat al final de l'entrada.
+        // Hem acabat de llegir.
+        if (fi==1)
             return -1;
 
-        // 4. Llegim un bloc nou al buffer lineal
-        int free_bytes = buffer_free_bytes(&cbuf);
-        ssize_t r = read(STDIN_FILENO, linear, free_bytes);
-        if (r <= 0) {
-            reached_eof = 1;
-        } 
-        else {
-            // 5. Passem les dades al buffer circular
-            for (ssize_t i = 0; i < r; i++)
+        // Cas 4: La línia està a mitges. No hi ha línia completa però pot arribar-ne més.
+        // Llegim un bloc nou de l'entrada estàndar al buffer lineal.
+        // Només llegim els bytes que caben al buffer circular.
+        int llegits = read(0, linear, buffer_free_bytes(&cbuf));
+
+        if (llegits <= 0) {
+            // Si read retorna 0 o -1 marquem que hem arribat al final.
+            fi = 1;
+        } else {
+            // Guardem els bytes llegits dins del buffer circular.
+            for (int i = 0; i < llegits; i++) {
                 buffer_push(&cbuf, linear[i]);
+            }
         }
     }
 }
@@ -219,9 +229,8 @@ int main(void) {
 
     // Bucle principal del shell (espera comandes contínuament).
     while (1) {
-        // Llegim la línia que indica el MODE (SINGLE, CONCURRENT, PIPED o EXIT)
-        if (read_line(mode, sizeof(mode)) < 0) {
-            break; // Si es detecta final de fitxer (EOF) o error de lectura, sortim.
+        if (extreure_linia(mode, sizeof(mode)) < 0) {
+            break;
         }
 
         // Si el mode és EXIT, acabam el bucle per tancar shell.
@@ -231,28 +240,27 @@ int main(void) {
 
         // Gestió del mode SINGLE
         if (strcmp(mode, "SINGLE") == 0) {
-            if (read_line(cmd1, sizeof(cmd1)) >= 0) {
+            if (extreure_linia(cmd1, sizeof(cmd1)) >= 0) {
                 executar_single(cmd1);
             }
         } 
         // Gestió del mode CONCURRENT
         else if (strcmp(mode, "CONCURRENT") == 0) {
-            if (read_line(cmd1, sizeof(cmd1)) >= 0) {
+            if (extreure_linia(cmd1, sizeof(cmd1)) >= 0) {
                 executar_concurrent(cmd1);
             }
         } 
         // Gestió del mode PIPED
         else if (strcmp(mode, "PIPED") == 0) {
-            // El mode PIPED requereix llegir dues línies de comanda consecutives.
-            if (read_line(cmd1, sizeof(cmd1)) >= 0) {
-                if (read_line(cmd2, sizeof(cmd2)) >= 0) {
+            if (extreure_linia(cmd1, sizeof(cmd1)) >= 0) {
+                if (extreure_linia(cmd2, sizeof(cmd2)) >= 0) {
                     executar_piped(cmd1, cmd2);
                 }
             }
         }
     }
 
-    // Alliberam la memòria del buffer circular abans de finalitzar el programa.
+    // Alliberem la memòria del buffer circular.
     buffer_deallocate(&cbuf);
     return 0;
 }
