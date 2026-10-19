@@ -5,7 +5,7 @@ L'hem feta servir per entendre millor la teoria, resoldre dubtes conceptuals i a
 
 Concretament, l'ús que n'hem fet es resumeix en els següents punts:
 
-1. Comprensió de conceptes i crides POSIX:
+1. Comprensió de conceptes i crides:
 Quan teníem dubtes sobre el funcionament teòric de les crides de sistema en C (com ara fork, execvp, waitpid, pipe o dup2), hem demanat a la IA que ens explicàs la lògica que hi ha al darrere d'aquests mecanismes. 
 Això mos ha servit per entendre clarament conceptes clau com el duplicat de descriptors de fitxer, el pas de dades a través de canonades entre processos pare i fill, o com gestionar l'espera de processos per evitar que quedin penjats.
 
