@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <signal.h>
 
 #include "splitCommand.h"
 #include "circularBuffer.h"
@@ -172,6 +173,46 @@ void executar_piped(char *cmd1_line, char *cmd2_line) {
     free(args2);
 }
 
+// 4. EXECUCIÓ EN MODE TIMEOUT
+
+void executar_timeout(int temps, char *cmd_line){
+    // Convertim la cadena de text en un vector d'arguments
+    char **args = split_command(cmd_line);
+    // Comprovam si el split ha fallat o si la línia estava buida
+    if (args == NULL || args[0] == NULL) {
+        if (args != NULL) free(args);
+        return;
+    }
+
+    // -- PRIMER FILL: executa la comanda.
+    pid_t pid = fork();
+    if (pid == 0) {
+        execvp(args[0], args);
+        perror("Error en execvp");
+        exit(EXIT_FAILURE);
+    }
+
+    // -- SEFON FILL: espera el temps i després mata la comanda.
+    // Dorm els segons passats a la funció i després envia SIGKILL.
+    pid_t pid_timer = fork();
+    if (pid_timer == 0) {
+        sleep(temps);
+        kill(pid, SIGKILL);
+        exit(0);
+    }
+
+    // El pare espera que acabi la comanda.
+    waitpid(pid, NULL, 0);
+
+    // Quan la comanda acaba, mata el temporitzador. 
+    kill(pid_timer, SIGKILL);
+    waitpid(pid_timer, NULL, 0);
+
+    // Alliberem la memòria del verctor d'arguments.
+    free(args);
+}
+
+// 5. BUCLE PRINCIPAL
 int main(void) {
     char mode[MAX_LINE];
     char cmd1[MAX_LINE];
@@ -205,6 +246,15 @@ int main(void) {
             if (extreure_linia(cmd1, sizeof(cmd1)) >= 0) {
                 if (extreure_linia(cmd2, sizeof(cmd2)) >= 0) {
                     executar_piped(cmd1, cmd2);
+                }
+            }
+        }
+        // Gestió del mode TIMEOUT
+        else if (strcmp(mode, "TIMEOUT") == 0) {
+            if (extreure_linia(cmd1, sizeof(cmd1)) >= 0) {
+                if (extreure_linia(cmd2, sizeof(cmd2)) >= 0) {
+                    int temps = atoi(cmd1);
+                    executar_timeout(temps, cmd2);
                 }
             }
         }
