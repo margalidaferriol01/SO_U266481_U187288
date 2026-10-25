@@ -192,7 +192,7 @@ void executar_timeout(int temps, char *cmd_line){
         exit(EXIT_FAILURE);
     }
 
-    // -- SEFON FILL: espera el temps i després mata la comanda.
+    // -- SEGON FILL: espera el temps i després mata la comanda.
     // Dorm els segons passats a la funció i després envia SIGKILL.
     pid_t pid_timer = fork();
     if (pid_timer == 0) {
