@@ -13,7 +13,9 @@
 
 static CircularBuffer cbuf;                 
 static unsigned char linear[BUFFER_SIZE];  
-static int fi = 0;                 
+static int fi = 0;  
+// pid de l'últim procés en mode CONCURRENT (iniciem a -1 si encara no n'hi ha cap) 
+static pid_t ultim_concurrent = -1;              
 
 int extreure_linia(char *out, int max) {
 
@@ -127,6 +129,8 @@ void executar_concurrent(char *cmd_line) {
         // A diferència de SINGLE, NO feim waitpid().
         // El pare allibera la memòria dels arguments i continua immediatament el bucle principal.
         // Això permet que el fill s'executi en segon pla paral·lelament al shell.
+        // A més, guardem el pid del fill per poder fer KILL quan es faci Ctrl+C
+        ultim_concurrent = pid;
         free(args);
     } 
     else {
@@ -255,7 +259,17 @@ void executar_timeout(int temps, char *cmd_line){
     free(args);
 }
 
-// 5. BUCLE PRINCIPAL
+// 5. GESTIÓ DE CTRL+C
+
+// La funció s'executa quan es fa CTRL+C
+// Enlloc de tancar el shell, enviem missatge SIGKILL a l'últim concurrent.
+void gestor_sigint(int sig){
+    if(ultim_concurrent>0){
+        kill(ultim_concurrent,SIGKILL);
+    }
+}
+
+// 6. BUCLE PRINCIPAL
 int main(void) {
     char mode[MAX_LINE];
     char cmd1[MAX_LINE];
@@ -266,6 +280,9 @@ int main(void) {
         perror("Error inicialitzant el buffer");
         return EXIT_FAILURE;
     }
+
+    // Ara, quan arribi SIGINT, s'executa gestor_sigint. 
+    signal(SIGINT, gestor_sigint);
 
     // Bucle principal del shell (espera comandes contínuament).
     while (1) {
