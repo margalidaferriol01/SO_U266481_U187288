@@ -1,0 +1,18 @@
+------- AI DISCLAIMER -------
+
+Per fer aquesta segona pràctica hem fet servir el Gemini i Claude com a eina de suport. Amb això, hem intentat aprofundir en els fonaments teòrics, resoldre dubtes conceptuals i aprendre a interpretar els nostres propis errors de codi i compilació.
+
+Concretament, l'ús que n'hem fet es resumeix en els següents punts:
+
+1. Comprensió de conceptes:
+Consultes sobre el funcionament teòric i la lògica subjacent de les crides de sistema en C (com ara fork, execvp, waitpid, pipe, dup2, signal i kill). 
+
+2. Estructuració de la lògica:
+A l'hora de plantejar el disseny dels diferents modes d'execució (SINGLE, CONCURRENT, PIPED i el modificador TIMEOUT), hem utilitzat la IA com a eina de raonament guiat. 
+Mitjançant preguntes i esquemes sobre l'ordre dels passos a seguir (com ara la gestió d'obertura/tancament dels extrems dels pipes o el control dels temporitzadors), hem sigut nosaltres mateixes les encarregades de deduir la solució i escriure el codi font.
+
+3. Interpretació d'errors de compilació i depuració:
+Suport en l'anàlisi de missatges d'error emesos pel compilador (gcc/clang) i l'entorn de desenvolupament, com ara fallades de sintaxi, símbols no definits ("undefined symbols"), incompatibilitats d'arquitectura... 
+En lloc de sol·licitar la reescriptura del codi, hem mostrat les sortides d'error concretes per comprendre per què fallava la compilació i aprendre a ajustar les comandes i scripts de build (compile.sh).
+
+En resum, la IA ha actuat com un ajudant interactiu i eina de depuració, que mos ha ajudat a raonar cada pas del projecte.

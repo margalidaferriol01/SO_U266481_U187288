@@ -67,8 +67,25 @@ int extreure_linia(char *out, int max) {
     }
 }
 
+// Funció auxiliar per llegir els segons de la línia TIMEOUT. 
+// Retorna 1 si ha pogut extreure els segons correctament, 0 en cas contrari.
+int parse_timeout_line(char *line, int *seconds) {
+    if (strncmp(line, "TIMEOUT", 7) == 0) {
+        if (sscanf(line + 7, "%d", seconds) == 1) {
+            return 1;
+        } else {
+            char num_line[MAX_LINE];
+            if (extreure_linia(num_line, sizeof(num_line)) >= 0) {
+                *seconds = atoi(num_line);
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 // 1. EXECUCIÓ EN MODE SINGLE
-void executar_single(char *cmd_line) {
+void executar_single(char *cmd_line, int timeout_sec) {
     // Convertim la cadena de text (ex: "ls -l /tmp") en un vector d'arguments
     // args[0] = "ls", args[1] = "-l", args[2] = "/tmp", args[3] = NULL
     char **args = split_command(cmd_line);
@@ -90,23 +107,38 @@ void executar_single(char *cmd_line) {
         perror("Error en execvp");
         exit(EXIT_FAILURE);// Tancam el fill amb codi d'error.
     } 
+
     else if (pid > 0) {
-        // --- PROCÉS PARE ---
-        // En mode SINGLE, el pare s'ha de bloquejar fins que el fill acabi.
+        pid_t pid_timer = -1;
+
+        // Si hi ha TIMEOUT, creem el procés temporitzador
+        if (timeout_sec > 0) {
+            pid_timer = fork();
+            if (pid_timer == 0) {
+                sleep(timeout_sec);
+                kill(pid, SIGKILL);
+                exit(0);
+            }
+        }
+    
         waitpid(pid, NULL, 0);
-        // Un pic el fill ha acabat, alliberam el vector d'arguments que crea split_command.
+
+        // Netejem el temporitzador quan la comanda acaba
+        if (timeout_sec > 0 && pid_timer > 0) {
+            kill(pid_timer, SIGKILL);
+            waitpid(pid_timer, NULL, 0);
+        }
+
         free(args); 
     } 
     else {
-        // --- ERROR EN FORK ---
-        // Si el sistema no ha pogut crear el procés fill, imprimim un missatge d'error i alliberam la memòria.
         perror("Error en fork");
         free(args);
     }
 }
 
 // 2. EXECUCIÓ EN MODE CONCURRENT 
-void executar_concurrent(char *cmd_line) {
+void executar_concurrent(char *cmd_line, int timeout_sec) {
     // Analitzam la comanda en un vector d'arguments.
     char **args = split_command(cmd_line);
     if (args == NULL || args[0] == NULL) {
@@ -131,6 +163,16 @@ void executar_concurrent(char *cmd_line) {
         // Això permet que el fill s'executi en segon pla paral·lelament al shell.
         // A més, guardem el pid del fill per poder fer KILL quan es faci Ctrl+C
         ultim_concurrent = pid;
+
+        if (timeout_sec > 0) {
+            pid_t pid_timer = fork();
+            if (pid_timer == 0) {
+                sleep(timeout_sec);
+                kill(pid, SIGKILL);
+                exit(0);
+            }
+        }
+
         free(args);
     } 
     else {
@@ -141,7 +183,7 @@ void executar_concurrent(char *cmd_line) {
 }
 
 // 3. EXECUCIÓ EN MODE PIPED
-void executar_piped(char *cmd1_line, char *cmd2_line) {
+void executar_piped(char *cmd1_line, char *cmd2_line, int timeout_sec) {
     // Analitzam les dues comandes de manera independent.
     char **args1 = split_command(cmd1_line);
     char **args2 = split_command(cmd2_line);
@@ -211,9 +253,25 @@ void executar_piped(char *cmd1_line, char *cmd2_line) {
     close(pipefd[0]);
     close(pipefd[1]);
 
+    pid_t pid_timer = -1;
+    if (timeout_sec > 0) {
+        pid_timer = fork();
+        if (pid_timer == 0) {
+            sleep(timeout_sec);
+            kill(pid1, SIGKILL);
+            kill(pid2, SIGKILL);
+            exit(0);
+        }
+    }
+
     // Esperam que finalitzin els dos processos fills per no deixar processos a l'aire.
     waitpid(pid1, NULL, 0);
     waitpid(pid2, NULL, 0);
+
+    if (timeout_sec > 0 && pid_timer > 0) {
+        kill(pid_timer, SIGKILL);
+        waitpid(pid_timer, NULL, 0);
+    }
 
     // Alliberam la memòria dinàmica dels dos vectors d'arguments.
     free(args1);
@@ -221,8 +279,8 @@ void executar_piped(char *cmd1_line, char *cmd2_line) {
 }
 
 // 4. EXECUCIÓ EN MODE TIMEOUT
-
-void executar_timeout(int temps, char *cmd_line){
+// La podem comentar perquè ja hem integrat la funcionalitat de timeout dins de SINGLE, CONCURRENT i PIPED.
+/* void executar_timeout(int temps, char *cmd_line){
     // Convertim la cadena de text en un vector d'arguments
     char **args = split_command(cmd_line);
     // Comprovam si el split ha fallat o si la línia estava buida
@@ -257,7 +315,7 @@ void executar_timeout(int temps, char *cmd_line){
 
     // Alliberem la memòria del verctor d'arguments.
     free(args);
-}
+}*/
 
 // 5. GESTIÓ DE CTRL+C
 
@@ -271,7 +329,8 @@ void gestor_sigint(int sig){
 
 // 6. BUCLE PRINCIPAL
 int main(void) {
-    char mode[MAX_LINE];
+    char line1[MAX_LINE];
+    char line2[MAX_LINE];
     char cmd1[MAX_LINE];
     char cmd2[MAX_LINE];
 
@@ -286,47 +345,58 @@ int main(void) {
 
     // Bucle principal del shell (espera comandes contínuament).
     while (1) {
-        if (extreure_linia(mode, sizeof(mode)) < 0) {
+
+        // Inicialitzem el temporitzador a 0 a cada iteració
+        int timeout_sec = 0;
+
+        if (extreure_linia(line1, sizeof(line1)) < 0) {
             break;
         }
 
         // Si el mode és EXIT, acabam el bucle per tancar shell.
-        if (strcmp(mode, "EXIT") == 0) {
+        if (strcmp(line1, "EXIT") == 0) {
             break;
         }
 
-        // Gestió del mode SINGLE
-        if (strcmp(mode, "SINGLE") == 0) {
+        // Cas 1: Instrucció TIMEOUT 
+       if (strncmp(line1, "TIMEOUT", 7) == 0) {
+            parse_timeout_line(line1, &timeout_sec);
             if (extreure_linia(cmd1, sizeof(cmd1)) >= 0) {
-                executar_single(cmd1);
+                executar_single(cmd1, timeout_sec);
             }
-        } 
-        // Gestió del mode CONCURRENT
-        else if (strcmp(mode, "CONCURRENT") == 0) {
-            if (extreure_linia(cmd1, sizeof(cmd1)) >= 0) {
-                executar_concurrent(cmd1);
-            }
-        } 
-        // Gestió del mode PIPED
-        else if (strcmp(mode, "PIPED") == 0) {
-            if (extreure_linia(cmd1, sizeof(cmd1)) >= 0) {
-                if (extreure_linia(cmd2, sizeof(cmd2)) >= 0) {
-                    executar_piped(cmd1, cmd2);
-                }
-            }
+            continue;
         }
-        // Gestió del mode TIMEOUT
-        else if (strcmp(mode, "TIMEOUT") == 0) {
-            if (extreure_linia(cmd1, sizeof(cmd1)) >= 0) {
-                if (extreure_linia(cmd2, sizeof(cmd2)) >= 0) {
-                    int temps = atoi(cmd1);
-                    executar_timeout(temps, cmd2);
-                }
+
+        // Cas 2: Modes amb opció de modificador TIMEOUT (SINGLE, CONCURRENT, PIPED)
+        char mode[MAX_LINE];
+        strcpy(mode, line1);
+
+        if (extreure_linia(line2, sizeof(line2)) < 0) {
+            break;
+        }
+
+        if (strncmp(line2, "TIMEOUT", 7) == 0) {
+            parse_timeout_line(line2, &timeout_sec);
+            if (extreure_linia(cmd1, sizeof(cmd1)) < 0) {
+                break;
+            }
+        } else {
+            strcpy(cmd1, line2);
+        }
+
+        if (strcmp(mode, "SINGLE") == 0) {
+            executar_single(cmd1, timeout_sec);
+        } 
+        else if (strcmp(mode, "CONCURRENT") == 0) {
+            executar_concurrent(cmd1, timeout_sec);
+        } 
+        else if (strcmp(mode, "PIPED") == 0) {
+            if (extreure_linia(cmd2, sizeof(cmd2)) >= 0) {
+                executar_piped(cmd1, cmd2, timeout_sec);
             }
         }
     }
 
-    // Alliberem la memòria del buffer circular.
     buffer_deallocate(&cbuf);
     return 0;
 }
