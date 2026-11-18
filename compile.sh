@@ -1,2 +1,2 @@
 #!/bin/bash
-gcc -Wall -o shell src/main.c src/circularBuffer.c src/splitCommand.c
+gcc -O2 -Wall src/P4_parallel.c src/parsePGM.c -o computeHistogramParallel -pthread
