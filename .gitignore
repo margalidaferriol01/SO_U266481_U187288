@@ -2,3 +2,10 @@ Data/
 .vscode/
 .DS_Store
 showHistogram.py
+build/
+computeHistogramParallel
+computeHistogramSequential
+*.csv
+*.txt
+!integrants.txt
+!ai_disclaimer.txt
