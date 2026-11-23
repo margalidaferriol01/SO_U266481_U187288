@@ -99,6 +99,41 @@ int main(int argc, char *argv[]) {
 
 void *worker_thread(void *arg) {
     ThreadInfo *info = (ThreadInfo *)arg;
-    (void)info; // Per evitar el warning mentre no estigui implementat
+
+    // Cada fil obre el fitxer pel seu compte, així no compartim el punter de lectura
+    int fd = open(info->filename, O_RDONLY);
+    if (fd < 0) {
+        perror("Error obrint la imatge");
+        return NULL;
+    }
+
+    // Ens coloquem a l'inici del nostre tros
+    lseek(fd, info->offset, SEEK_SET);
+
+    unsigned char buffer[BUFF_SIZE];
+    long pendents = info->bytesToRead;
+
+    // Llegim de 1024 en 1024 fins acabar el nostre tros
+    while (pendents > 0) {
+        int a_llegir = BUFF_SIZE;
+        if (pendents < BUFF_SIZE) {
+            a_llegir = pendents; 
+        }
+
+        int llegits = read(fd, buffer, a_llegir);
+        if (llegits <= 0) {
+            fprintf(stderr, "Error: el fitxer s'ha acabat abans d'hora\n");
+            break;
+        }
+
+        // Sumem cada pixel al nostre histograma (que nomes toca aquest fil)
+        for (int i = 0; i < llegits; i++) {
+            info->local_hist[buffer[i]]++;
+        }
+
+        pendents = pendents - llegits;
+    }
+
+    close(fd);
     return NULL;
 }
