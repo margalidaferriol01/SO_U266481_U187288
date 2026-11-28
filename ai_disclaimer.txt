@@ -1,2 +1,8 @@
 ------- AI DISCLAIMER -------
+Hem fet servir Claude durant el desenvolupament de la pràctica per ajudar-nos amb la comanda time, que hem utilitzat per mesurar el temps d’execució del programa P4_parallel.c. 
+Sabíem que havíem d’utilitzar aquesta funció, però ens ha ajudat a entendre millor com executar-la correctament i com interpretar els resultats obtinguts.
 
+També l'hem utilitzat  per analitzar alguns missatges d’error que ens apareixien durant el desenvolupament.
+Ens ha ajudat a entendre què significaven aquests errors i a identificar què podia estar fallant en el programa.
+
+En general, l’ús de Claude ha estat com a suport per entendre eines i errors durant el desenvolupament de la pràctica.
